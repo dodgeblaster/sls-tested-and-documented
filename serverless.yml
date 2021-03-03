@@ -1,0 +1,154 @@
+service: sls-int-test
+plugins:
+    - serverless-plugin-canary-deployments
+
+frameworkVersion: '2'
+
+provider:
+    name: aws
+    runtime: nodejs12.x
+    stage: ${opt:stage, 'dev'}
+    environment:
+        TABLE: ${self:service}-${opt:stage, self:provider.stage}
+        ENDPOINT: ${self:custom.endpoint}
+        CFSTACK: ${self:service}-${opt:stage, self:provider.stage}
+        USERPOOL_ID:
+            Ref: CognitoUserPoolMyUserPool
+        USERPOOL_CLIENT_ID:
+            Ref: CognitoUserPoolClient
+
+    iamRoleStatements:
+        - Effect: Allow
+          Action:
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+          Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:service}-${opt:stage, self:provider.stage}'
+        - Effect: Allow
+          Action:
+              - codedeploy:*
+          Resource:
+              - '*'
+        - Effect: Allow
+          Action:
+              - cloudformation:DescribeStacks
+          Resource:
+              - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*'
+
+custom:
+    stage: ${opt:stage, self:provider.stage}
+    region: ${opt:region, self:provider.region}
+    userPool: inttested
+    endpoint:
+        Fn::Join:
+            - ''
+            - - https://
+              - Ref: ApiGatewayRestApi
+              - .execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}
+
+    deploymentSettings:
+        stages:
+            - staging
+
+functions:
+    notes:
+        handler: ./src/notes/index.handler
+        events:
+            - http:
+                  path: /notes/{any+}
+                  method: ANY
+                  cors: true
+                  authorizer:
+                      type: COGNITO_USER_POOLS
+                      authorizerId:
+                          Ref: ApiGatewayAuthorizer
+        deploymentSettings:
+            type: AllAtOnce
+            alias: Live
+            postTrafficHook: notesHook
+    notesHook:
+        handler: ./src/notes/_tests/integration/hook.handler
+
+resources:
+    Resources:
+        # - - - - - - - - - - - - - - - - - - -
+        # DB
+        # - - - - - - - - - - - - - - - - - - -
+        table:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: ${self:service}-${self:custom.stage}
+                AttributeDefinitions:
+                    - AttributeName: PK
+                      AttributeType: S
+                    - AttributeName: SK
+                      AttributeType: S
+                    - AttributeName: GSI1
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: PK
+                      KeyType: HASH
+                    - AttributeName: SK
+                      KeyType: RANGE
+                BillingMode: PAY_PER_REQUEST
+                GlobalSecondaryIndexes:
+                    - IndexName: GSI1
+                      KeySchema:
+                          - AttributeName: GSI1
+                            KeyType: HASH
+                          - AttributeName: SK
+                            KeyType: RANGE
+                      Projection:
+                          ProjectionType: ALL
+
+        # - - - - - - - - - - - - - - - - - - -
+        # Users
+        # - - - - - - - - - - - - - - - - - - -
+        CognitoUserPoolMyUserPool:
+            Type: AWS::Cognito::UserPool
+            Properties:
+                UserPoolName: ${self:custom.stage}-${self:custom.userPool}-user-pool
+                UsernameAttributes:
+                    - email
+                AutoVerifiedAttributes:
+                    - email
+
+                AdminCreateUserConfig:
+                    AllowAdminCreateUserOnly: true
+                    InviteMessageTemplate:
+                        EmailSubject: You are being invited to join Origamai
+                    UnusedAccountValidityDays: 365
+
+        CognitoUserPoolClient:
+            Type: AWS::Cognito::UserPoolClient
+            Properties:
+                ClientName: ${self:custom.stage}-${self:custom.userPool}-user-pool-client
+                UserPoolId:
+                    Ref: CognitoUserPoolMyUserPool
+                ExplicitAuthFlows:
+                    - ADMIN_NO_SRP_AUTH
+                GenerateSecret: false
+        ApiGatewayAuthorizer:
+            DependsOn:
+                - ApiGatewayRestApi
+            Type: AWS::ApiGateway::Authorizer
+            Properties:
+                Name: cognito_auth
+                RestApiId: { 'Ref': 'ApiGatewayRestApi' }
+                IdentitySource: method.request.header.Authorization
+                Type: COGNITO_USER_POOLS
+                ProviderARNs:
+                    - Fn::GetAtt: [CognitoUserPoolMyUserPool, Arn]
+
+    Outputs:
+        userPoolId:
+            Value:
+                Ref: CognitoUserPoolMyUserPool
+        userPoolClientId:
+            Value:
+                Ref: CognitoUserPoolClient
+        userPoolRegion:
+            Value: ${opt:region, 'us-east-1'}
