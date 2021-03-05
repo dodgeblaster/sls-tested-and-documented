@@ -2,7 +2,7 @@ const AWS = require('aws-sdk')
 const codeDeploy = new AWS.CodeDeploy({ apiVersion: '2014-10-06' })
 
 /**
- * Get Input
+ * getInput
  *
  * This helper function gets the event passed by codeDeploy and pulls
  * out the development id and lifecycle id. This will later be used by
@@ -53,10 +53,11 @@ const fail = async (e) => {
 }
 
 /**
- * Main Function
- *
  * This is the main function which will wrap all hooks, injecting them
  * with helper fucntions and values
+ * @example
+ * const postHookTest = () => runMyTests()
+ * module.exports.handler = hook(postHookTest)
  */
 module.exports = (fn) => async (e) => {
     const input = getInput(e)

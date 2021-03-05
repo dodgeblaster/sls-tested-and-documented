@@ -9,10 +9,9 @@ const AWS = require('aws-sdk')
  * a CloudFormation sdk call will work in both scenarios.
  *
  */
-async function getStackOutputs() {
-    const stackName = `${process.env.CFSTACK}`
+async function getStackOutputs(region, stackName) {
     const client = new AWS.CloudFormation({
-        region: process.env.REGION
+        region
     })
 
     let response

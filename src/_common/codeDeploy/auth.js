@@ -3,14 +3,15 @@ const CognitoIdentityServiceProvider = require('amazon-cognito-identity-js')
 global.fetch = require('node-fetch')
 
 /**
- * Authenticate a cognito user and return its authentication token. Use the auth token in the authorization header
+ * Authenticate a cognito user and return its authentication token. Use the auth
+ * token in the authorization header
  */
 const userName = 'int-test-admin@example.com'
 const password = 'Password@1001'
 
 function authenticateUser({ userPoolId, userPoolClientId }) {
     return new Promise((res, rej) => {
-        console.info('Authenticating user')
+        console.info('Authenticating user...')
         const authenticationData = {
             Username: userName,
             Password: password
