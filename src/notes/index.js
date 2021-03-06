@@ -5,12 +5,30 @@ const table = process.env.TABLE
 const dynamoDb = new AWS.DynamoDB.DocumentClient({
     region: process.env.REGION || 'us-east-1'
 })
+/**
+ * @module
+ * @name NotesEndpoint
+ */
 
 /**
  * @typedef Note
  * @property {string} id
  * @property {string} title
  */
+
+/**
+ * This wrapper around console.log is communicate when a log is being
+ * used for permanent monitoring reasons, and not simply for debugging reasons.
+ * @param {string} m
+ */
+function log(m, lvl = 'info') {
+    console.log(
+        JSON.stringify({
+            message: m,
+            lvl
+        })
+    )
+}
 
 /**
  * Gets a users note based on their cognito JWT and query param
@@ -57,6 +75,11 @@ function listNotes() {
 async function createNote(event) {
     const email = event.requestContext.authorizer.claims.email
     const data = JSON.parse(event.body)
+
+    if (!data.title) {
+        return http.validationError({ message: 'Must have a title' })
+    }
+
     const id = 'note_' + uuid()
     const params = {
         TableName: table,
@@ -80,8 +103,13 @@ async function createNote(event) {
  * @return {HttpResponse<Note>}
  */
 async function removeNote(event) {
-    const data = JSON.parse(event.body)
     const email = event.requestContext.authorizer.claims.email
+    const data = JSON.parse(event.body)
+
+    if (!data.id) {
+        return http.validationError({ message: 'Must have an id' })
+    }
+
     const params = {
         TableName: table,
         Key: {
@@ -112,7 +140,8 @@ async function router(event) {
         const ACTION = event.path.split('/')[2]
 
         if (VERB === 'GET' && ACTION === 'list') {
-            return listNotes()
+            // return listNotes()
+            return http.validationError({ message: 'Invalid Endpoint' })
         }
 
         if (VERB === 'GET') {
@@ -129,6 +158,7 @@ async function router(event) {
 
         return http.validationError({ message: 'Invalid Endpoint' })
     } catch (e) {
+        log(e.message, 'error')
         return http.error({ message: e.message })
     }
 }
